@@ -1,8 +1,13 @@
+package controller;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.MultipartConfig;
 import javax.servlet.annotation.WebServlet;
@@ -23,7 +28,11 @@ public class UploadServlet extends HttpServlet {
 
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-        // Gets values of text fields
+        // Get post details from request
+        String title = request.getParameter("title");
+        String description = request.getParameter("description");
+
+        // Get file part
         Part filePart = request.getPart("file");
         String fileName = getFileName(filePart);
         String fileType = filePart.getContentType();
@@ -31,55 +40,67 @@ public class UploadServlet extends HttpServlet {
         InputStream inputStream = null;
         
         if (filePart != null) {
-            // Obtains input stream of the upload file
+            // Obtain input stream of the uploaded file
             inputStream = filePart.getInputStream();
         }
 
-        Connection conn = null; // Connection to the database
-        String message = null;  // Message will be sent back to client
+        Connection conn = null;
+        String message = null;
 
         try {
-            // Connects to the database
+            // Connect to the database
             DriverManager.registerDriver(new com.mysql.cj.jdbc.Driver());
             conn = DriverManager.getConnection(dbURL, dbUser, dbPass);
 
-            // Constructs SQL statement
-            String sql = "INSERT INTO uploaded_files (file_name, file_type, file_data) values (?, ?, ?)";
-            PreparedStatement statement = conn.prepareStatement(sql);
-            statement.setString(1, fileName);
-            statement.setString(2, fileType);
+            // Insert post details
+            String postSql = "INSERT INTO posts (title, description) VALUES (?, ?)";
+            PreparedStatement postStatement = conn.prepareStatement(postSql, Statement.RETURN_GENERATED_KEYS);
+            postStatement.setString(1, title);
+            postStatement.setString(2, description);
+            int affectedRows = postStatement.executeUpdate();
             
-            if (inputStream != null) {
-                // Fetches input stream of the upload file for the blob column
-                statement.setBlob(3, inputStream);
+            if (affectedRows == 0) {
+                throw new SQLException("Creating post failed, no rows affected.");
             }
 
-            // Sends the statement to the database server
-            int row = statement.executeUpdate();
-            if (row > 0) {
-                message = "File uploaded and saved into database";
+            // Retrieve the generated post ID
+            ResultSet generatedKeys = postStatement.getGeneratedKeys();
+            if (generatedKeys.next()) {
+                long postId = generatedKeys.getLong(1);
+
+                // Insert file details
+                String fileSql = "INSERT INTO uploaded_files (file_name, file_type, file_data, post_id) VALUES (?, ?, ?, ?)";
+                PreparedStatement fileStatement = conn.prepareStatement(fileSql);
+                fileStatement.setString(1, fileName);
+                fileStatement.setString(2, fileType);
+                
+                if (inputStream != null) {
+                    fileStatement.setBlob(3, inputStream);
+                }
+                
+                fileStatement.setLong(4, postId);
+
+                int row = fileStatement.executeUpdate();
+                if (row > 0) {
+                    message = "File uploaded and saved into database with post";
+                }
             }
         } catch (Exception ex) {
             message = "ERROR: " + ex.getMessage();
             ex.printStackTrace();
         } finally {
             if (conn != null) {
-                // Closes the database connection
                 try {
                     conn.close();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
-            // Sets the message in request scope
             request.setAttribute("Message", message);
-
-            // Forwards to the message page
             getServletContext().getRequestDispatcher("/message.jsp").forward(request, response);
         }
     }
 
-    // Obtains the file name part from the content-disposition header
     private String getFileName(Part part) {
         String contentDisposition = part.getHeader("content-disposition");
         for (String cd : contentDisposition.split(";")) {

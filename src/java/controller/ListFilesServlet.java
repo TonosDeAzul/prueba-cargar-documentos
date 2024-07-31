@@ -1,3 +1,5 @@
+package controller;
+
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -15,7 +17,6 @@ import javax.servlet.http.HttpServletResponse;
 public class ListFilesServlet extends HttpServlet {
     private static final long serialVersionUID = 1L;
 
-    // Database connection settings
     private String dbURL = "jdbc:mysql://localhost:3306/prubaarchivos";
     private String dbUser = "root";
     private String dbPass = "";
@@ -25,20 +26,20 @@ public class ListFilesServlet extends HttpServlet {
         Connection conn = null;
         List<String> fileNames = new ArrayList<>();
         List<Integer> fileIds = new ArrayList<>();
+        List<String> postTitles = new ArrayList<>();
 
         try {
-            // Connects to the database
             DriverManager.registerDriver(new com.mysql.cj.jdbc.Driver());
             conn = DriverManager.getConnection(dbURL, dbUser, dbPass);
 
-            // Fetches file names and IDs
-            String sql = "SELECT id, file_name FROM uploaded_files";
+            String sql = "SELECT f.id, f.file_name, p.title FROM uploaded_files f JOIN posts p ON f.post_id = p.id";
             Statement statement = conn.createStatement();
             ResultSet resultSet = statement.executeQuery(sql);
 
             while (resultSet.next()) {
                 fileIds.add(resultSet.getInt("id"));
                 fileNames.add(resultSet.getString("file_name"));
+                postTitles.add(resultSet.getString("title"));
             }
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -54,6 +55,7 @@ public class ListFilesServlet extends HttpServlet {
 
         request.setAttribute("fileNames", fileNames);
         request.setAttribute("fileIds", fileIds);
+        request.setAttribute("postTitles", postTitles);
         request.getRequestDispatcher("/listFiles.jsp").forward(request, response);
     }
 }
